@@ -168,10 +168,21 @@ impl AevoClient {
         }
     }
 
-    pub fn parse_response(msg : Message) -> Result<WsResponse> {
-        let msg_txt = msg.into_text()?; 
-        Ok(serde_json::from_str::<WsResponse>(&msg_txt)?)
+    pub fn parse_response(msg: Message) -> Result<WsResponse> {
+        let msg_txt = msg.into_text()?;
+        let response: WsResponse = serde_json::from_str(&msg_txt)?;
+    
+        match &response {
+            WsResponse::UnknownResponse { raw } => {
+                error!("Unexpected message format: {}", raw);
+                // Handle or log unexpected data
+            },
+            _ => {} // Handle other expected variants if needed
+        }
+    
+        Ok(response)
     }
+    
 
     pub async fn send (&self, data: &Message) -> Result<()>{
         let mut attempts = 0; 
