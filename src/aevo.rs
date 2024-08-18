@@ -429,27 +429,36 @@ impl AevoClient {
         
         let msg = Message::from(serde_json::to_string(&request)?); 
         self.send(&msg).await?;
+        
+        // Wait for the response to this request
+        while let Some(response_msg) = self.ws_stream.next().await {
+            match response_msg {
+                Ok(ws_message) => {
+                    // Assuming the message is a Text message
+                    if let Message::Text(response_text) = ws_message {
+                        // Parse the incoming message as a WsResponse
+                        let response: WsResponse = serde_json::from_str(&response_text)?;
 
-        // Wait for a response to this request
-        loop {
-            if let Some(response_msg) = self.recv().await {
-                let response: WsResponse = serde_json::from_str(&response_msg.to_string())?;
-
-                // Check if the response corresponds to the request ID
-                if let Some(response_id) = response.id {
-                    if response_id == request_id {
-                        if response.status == "success" {
-                            info!("Order successfully edited: {:?}", response.data);
-                            return Ok(new_order_id); // Return the new order ID
-                        } else {
-                            return Err(eyre!("Failed to edit order: {:?}", response.error));
+                        // Check if the response corresponds to the request ID
+                        if let Some(response_id) = response.id {
+                            if response_id == request_id {
+                                if response.status == "success" {
+                                    info!("Order successfully edited: {:?}", response.data);
+                                    return Ok(new_order_id); // Return the new order ID
+                                } else {
+                                    return Err(eyre!("Failed to edit order: {:?}", response.error));
+                                }
+                            }
                         }
                     }
+                },
+                Err(e) => {
+                    return Err(eyre!("Error receiving WebSocket message: {:?}", e));
                 }
-            } else {
-                return Err(eyre!("No response received"));
             }
         }
+
+    Err(eyre!("No valid response received"))
 
         Ok(new_order_id)
     }
