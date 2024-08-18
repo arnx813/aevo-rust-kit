@@ -168,21 +168,10 @@ impl AevoClient {
         }
     }
 
-    pub fn parse_response(msg: Message) -> Result<WsResponse> {
-        let msg_txt = msg.into_text()?;
-        let response: WsResponse = serde_json::from_str(&msg_txt)?;
-    
-        match &response {
-            WsResponse::UnknownResponse { raw } => {
-                error!("Unexpected message format: {}", raw);
-                // Handle or log unexpected data
-            },
-            _ => {} // Handle other expected variants if needed
-        }
-    
-        Ok(response)
+    pub fn parse_response(msg : Message) -> Result<WsResponse> {
+        let msg_txt = msg.into_text()?; 
+        Ok(serde_json::from_str::<WsResponse>(&msg_txt)?)
     }
-    
 
     pub async fn send (&self, data: &Message) -> Result<()>{
         let mut attempts = 0; 
@@ -440,6 +429,27 @@ impl AevoClient {
         
         let msg = Message::from(serde_json::to_string(&request)?); 
         self.send(&msg).await?;
+
+        // Wait for a response to this request
+        loop {
+            if let Some(response_msg) = self.recv().await {
+                let response: WsResponse = serde_json::from_str(&response_msg.to_string())?;
+
+                // Check if the response corresponds to the request ID
+                if let Some(response_id) = response.id {
+                    if response_id == request_id {
+                        if response.status == "success" {
+                            info!("Order successfully edited: {:?}", response.data);
+                            return Ok(new_order_id); // Return the new order ID
+                        } else {
+                            return Err(eyre!("Failed to edit order: {:?}", response.error));
+                        }
+                    }
+                }
+            } else {
+                return Err(eyre!("No response received"));
+            }
+        }
 
         Ok(new_order_id)
     }
